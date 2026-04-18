@@ -42,6 +42,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var clipboardManager: ClipboardManager
     private var lastClipboardContent: String? = null
     private var isMonitoring = false
+    private var isServiceRunning = false
+
+    companion object {
+        const val ACTION_NEW_TWITTER_URL = "com.twitterdownloader.app.NEW_TWITTER_URL"
+        const val EXTRA_TWITTER_URL = "twitter_url"
+    }
 
     private val downloadQueue = ConcurrentLinkedQueue<DownloadTask>()
     private val failedTasks = mutableListOf<DownloadTask>()
@@ -89,8 +95,27 @@ class MainActivity : AppCompatActivity() {
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         checkAndRequestPermissions()
 
-        // 启动时自动启动剪贴板监控
-        startClipboardMonitoring()
+        // 注册广播接收器
+        val filter = android.content.IntentFilter(ACTION_NEW_TWITTER_URL)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(broadcastReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(broadcastReceiver, filter)
+        }
+
+        // 检查服务是否在运行
+        checkServiceStatus()
+    }
+
+    private fun checkServiceStatus() {
+        val manager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        for (service in manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (service.service.className == ClipboardMonitorService::class.java.name) {
+                isServiceRunning = true
+                isMonitoring = true
+                break
+            }
+        }
     }
 
     private fun setupUI() {
@@ -105,13 +130,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnStartMonitor.setOnClickListener {
-            startClipboardMonitoring()
-            Toast.makeText(this, "已开始监控剪贴板", Toast.LENGTH_SHORT).show()
+            startClipboardMonitoringService()
+            Toast.makeText(this, "已开始后台监控", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnStopMonitor.setOnClickListener {
-            stopClipboardMonitoring()
-            Toast.makeText(this, "已停止监控", Toast.LENGTH_SHORT).show()
+            stopClipboardMonitoringService()
+            Toast.makeText(this, "已停止后台监控", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnRetryFailed.setOnClickListener {
@@ -193,6 +218,50 @@ class MainActivity : AppCompatActivity() {
         }
         clipboardCheckRunnable = null
         logMessage("剪贴板监控已停止")
+    }
+
+    private fun startClipboardMonitoringService() {
+        if (isServiceRunning) {
+            Toast.makeText(this, "服务已在运行", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = Intent(this, ClipboardMonitorService::class.java).apply {
+            action = ClipboardMonitorService.ACTION_START
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        isServiceRunning = true
+        isMonitoring = true
+        logMessage("后台监控服务已启动")
+    }
+
+    private fun stopClipboardMonitoringService() {
+        if (!isServiceRunning) {
+            Toast.makeText(this, "服务未运行", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = Intent(this, ClipboardMonitorService::class.java).apply {
+            action = ClipboardMonitorService.ACTION_STOP
+        }
+        startService(intent)
+        isServiceRunning = false
+        isMonitoring = false
+        logMessage("后台监控服务已停止")
+    }
+
+    private val broadcastReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_NEW_TWITTER_URL) {
+                val url = intent.getStringExtra(EXTRA_TWITTER_URL)
+                if (!url.isNullOrEmpty()) {
+                    logMessage("后台服务检测到链接: $url")
+                    processTwitterLink(url)
+                }
+            }
+        }
     }
 
     private fun checkClipboard() {
@@ -648,6 +717,11 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         clipboardCheckRunnable?.let {
             clipboardCheckHandler.removeCallbacks(it)
+        }
+        try {
+            unregisterReceiver(broadcastReceiver)
+        } catch (e: Exception) {
+            // Ignore if not registered
         }
     }
 }
