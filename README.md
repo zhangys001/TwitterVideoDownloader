@@ -4,6 +4,7 @@
 
 ## 功能特性
 
+- **后台监控** - 使用前台服务持续监控剪贴板，应用在后台时也能自动检测链接
 - **剪贴板自动监测** - 复制推特链接后自动检测并开始下载，无需手动粘贴
 - **多平台支持** - 同时支持 twitter.com 和 x.com 链接
 - **多API fallback** - 内置 vxtwitter、twitsor 等多个视频解析源，自动尝试直到成功
@@ -22,6 +23,7 @@
 | UI 框架 | Material Design 3 |
 | 异步处理 | Kotlin Coroutines |
 | 架构 | MVVM (ViewBinding) |
+| 后台服务 | Foreground Service |
 
 ## 依赖库
 
@@ -66,11 +68,13 @@ app/build/outputs/apk/debug/app-debug.apk
 2. 在输入框粘贴推特链接，点击"下载"按钮
 3. 或直接复制链接，应用会自动监测并开始下载
 
-### 监控功能
+### 后台监控功能
 
-- 点击"启动监控"开始监测剪贴板
-- 复制任何 twitter.com 或 x.com 链接会自动捕获
-- 点击"停止监控"暂停剪贴板监测
+- 点击"启动监控"启动后台前台服务
+- 服务启动后会显示一个永久通知
+- 即使应用在后台或屏幕关闭，剪贴板监控依然生效
+- 检测到推特链接会自动打开应用并开始下载
+- 点击通知中的"停止监控"按钮可停止服务
 
 ### 队列管理
 
@@ -90,31 +94,34 @@ TwitterVideoDownloader/
 ├── app/
 │   └── src/main/
 │       ├── java/com/twitterdownloader/app/
-│       │   └── MainActivity.kt          # 主界面逻辑
+│       │   ├── MainActivity.kt              # 主界面逻辑
+│       │   └── ClipboardMonitorService.kt   # 后台监控服务
 │       └── res/
 │           ├── layout/
-│           │   └── activity_main.xml    # 界面布局
+│           │   └── activity_main.xml        # 界面布局
 │           ├── values/
-│           │   ├── strings.xml           # 字符串资源
-│           │   └── colors.xml            # 颜色定义
-│           └── drawable/                 # 图标资源
-├── build.gradle.kts                      # 项目构建配置
-├── settings.gradle.kts                   # Gradle 设置
-└── gradle.properties                    # Gradle 属性
+│           │   ├── strings.xml              # 字符串资源
+│           │   └── colors.xml               # 颜色定义
+│           └── drawable/                    # 图标资源
+├── build.gradle.kts                         # 项目构建配置
+├── settings.gradle.kts                      # Gradle 设置
+└── gradle.properties                        # Gradle 属性
 ```
 
 ## 工作原理
 
-1. **链接检测** - 使用正则表达式匹配 twitter.com/x.com 格式的 URL
-2. **视频解析** - 通过第三方 API (vxtwitter/twitsor) 获取视频直链
-3. **文件下载** - 使用 HttpURLConnection 流式下载，支持断点续传和进度显示
-4. **存储管理** - 下载到应用私有目录，无需 Storage 权限（Android 10+）
+1. **后台服务** - 使用 Foreground Service 在后台持续运行，绑定通知确保不被系统杀死
+2. **链接检测** - 服务中每秒钟检查一次剪贴板，使用正则表达式匹配 twitter.com/x.com URL
+3. **视频解析** - 通过第三方 API (vxtwitter/twitsor) 获取视频直链
+4. **文件下载** - 使用 HttpURLConnection 流式下载，支持断点续传和进度显示
+5. **存储管理** - 下载到应用私有目录，无需 Storage 权限（Android 10+）
 
 ## 注意事项
 
 - 本应用仅供个人学习交流使用
 - 请尊重版权，下载内容仅供个人使用
 - 推特视频解析依赖第三方 API，服务可能不稳定
+- 后台监控会显示一个常驻通知，这是 Android 系统的要求
 
 ## License
 
