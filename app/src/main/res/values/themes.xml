@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TwitterVideoDownloader" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#00ACED</item>
+        <item name="colorPrimaryVariant">#0084B4</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">#4CAF50</item>
+        <item name="colorSecondaryVariant">#388E3C</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="android:statusBarColor">#00ACED</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-files-path
+        name="twitter_downloads"
+        path="Movies/TwitterDownloads/" />
+    <files-path
+        name="failed_downloads"
+        path="failed_downloads/" />
+    <cache-path
+        name="cache"
+        path="/" />
+</paths>
