@@ -16,6 +16,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -65,11 +66,46 @@ class MainActivity : AppCompatActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
+        val deniedPermissions = permissions.filter { !it.value }.keys
+        if (deniedPermissions.isEmpty()) {
+            logMessage("所有权限已授予")
             startClipboardMonitoring()
         } else {
-            Toast.makeText(this, "需要权限才能正常运行", Toast.LENGTH_SHORT).show()
+            val deniedList = deniedPermissions.joinToString(", ") { getPermissionChineseName(it) }
+            logMessage("权限被拒绝: $deniedList")
+            showPermissionDeniedDialog(deniedList)
+        }
+    }
+
+    private fun getPermissionChineseName(permission: String): String {
+        return when (permission) {
+            Manifest.permission.POST_NOTIFICATIONS -> "通知权限"
+            Manifest.permission.WRITE_EXTERNAL_STORAGE -> "存储权限"
+            Manifest.permission.READ_EXTERNAL_STORAGE -> "存储读取权限"
+            else -> permission
+        }
+    }
+
+    private fun showPermissionDeniedDialog(deniedPermissions: String) {
+        AlertDialog.Builder(this)
+            .setTitle("需要权限")
+            .setMessage("以下权限被拒绝，可能会影响应用功能：\n\n$deniedPermissions\n\n点击\"去设置\"在应用详情页面手动开启权限。")
+            .setPositiveButton("去设置") { _, _ ->
+                openAppSettings()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun openAppSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            val intent = Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS)
+            startActivity(intent)
         }
     }
 
@@ -158,31 +194,33 @@ class MainActivity : AppCompatActivity() {
     private fun checkAndRequestPermissions() {
         val permissions = mutableListOf<String>()
 
+        // 通知权限 (Android 13+ 需要)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
             ) {
                 permissions.add(Manifest.permission.POST_NOTIFICATIONS)
             }
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO)
+        }
+
+        // 下载到应用私有目录，Android 10+ 不需要存储权限
+        // Android 9 及以下版本如需外部存储才需要
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED
             ) {
-                permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
-            }
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+                permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             }
         }
 
-        // 使用应用私有目录存储
         val downloadDir = getDownloadDir()
         logMessage("下载目录: $downloadDir")
 
         if (permissions.isNotEmpty()) {
+            logMessage("正在请求权限: ${permissions.joinToString(", ") { getPermissionChineseName(it) }}")
             permissionLauncher.launch(permissions.toTypedArray())
         } else {
+            logMessage("权限检查完成（使用应用私有目录，无需存储权限）")
             startClipboardMonitoring()
         }
     }
