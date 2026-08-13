@@ -376,7 +376,7 @@ open class VideoInfoParser {
 - [ ] **Step 4: 运行测试，确认通过**
 
 Run: `./gradlew :app:testDebugUnitTest --tests "com.twitterdownloader.app.network.VideoInfoParserTest"`
-Expected: 11 tests PASS
+Expected: 10 tests PASS（代码质量审查补充了 vxtwitter 字段解析后为 13 个）
 
 - [ ] **Step 5: Commit**
 
