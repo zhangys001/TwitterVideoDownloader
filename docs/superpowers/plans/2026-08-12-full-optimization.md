@@ -744,6 +744,15 @@ class DownloadManagerTest {
 Run: `./gradlew :app:testDebugUnitTest --tests "com.twitterdownloader.app.DownloadManagerTest"`
 Expected: `FAILED`（`DownloadManager` 未定义）
 
+> **测试作用域说明（2026-08-13 修正）**：kotlinx-coroutines-test 1.9.0 的 `runTest` 在结束时**等待** TestScope 的活动子协程，而 worker 协程永不完成，直接传入 `this` 会抛 `UncompletedCoroutinesError`；传入 `backgroundScope` 又不会被 `advanceUntilIdle()` 驱动。正确做法是注入一个挂在测试调度器上、但不作为 TestScope 子任务的 scope：
+>
+> ```kotlin
+> private fun TestScope.workerScope(): CoroutineScope =
+>     CoroutineScope(SupervisorJob() + coroutineContext.minusKey(Job))
+> ```
+>
+> 测试中所有 `DownloadManager(..., this)` 改用 `DownloadManager(..., workerScope())`，生产代码保持 `scope.launch { workerLoop() }`（继承注入 scope 的调度器）不变。
+
 - [ ] **Step 3: 实现 DownloadManager**
 
 ```kotlin
