@@ -4,8 +4,9 @@
 
 ## 功能特性
 
-- **后台监控** - 使用前台服务持续监控剪贴板，应用在后台时也能自动检测链接
-- **剪贴板自动监测** - 复制推特链接后自动检测并开始下载，无需手动粘贴
+- **后台监控** - 使用前台服务持续监控剪贴板，应用在后台时也能自动检测链接。检测到的链接会先提交给共享下载管线，即使界面不在前台也能继续下载
+- **剪贴板自动监测** - 前台使用系统剪贴板监听器自动检测链接（不再每秒轮询）
+- **公共目录存储** - 视频保存到系统公共 Downloads 目录，Android 10+ 无需存储权限，可直接在相册/文件管理器中访问
 - **多平台支持** - 同时支持 twitter.com 和 x.com 链接
 - **多API fallback** - 内置 vxtwitter、twitsor 等多个视频解析源，自动尝试直到成功
 - **并发下载** - 最多同时下载 3 个视频，队列式管理
@@ -22,7 +23,7 @@
 | 目标 SDK | Android 15 (API 35) |
 | UI 框架 | Material Design 3 |
 | 异步处理 | Kotlin Coroutines |
-| 架构 | MVVM (ViewBinding) |
+| 架构 | MVVM (ViewModel + StateFlow) |
 | 后台服务 | Foreground Service |
 
 ## 依赖库
@@ -30,7 +31,6 @@
 - AndroidX Core KTX
 - AndroidX AppCompat
 - Material Components
-- AndroidX ConstraintLayout
 - AndroidX Lifecycle (ViewModel + Coroutines)
 - AndroidX Activity/Fragment KTX
 - Kotlinx Coroutines Android
@@ -84,25 +84,37 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ### 查看下载
 
-- 点击"打开文件夹"可直接访问下载目录
-- 下载的文件保存在 `Android/data/com.twitterdownloader.app/files/Movies/TwitterDownloads/`
+- 点击"打开文件夹"可打开最新下载的视频（Android 8/9 仅显示文件路径）
+- 视频保存到系统公共 Downloads 目录，Android 10+ 无需存储权限（Android 8/9 使用传统公共目录）
 
 ## 文件结构
 
 ```
 TwitterVideoDownloader/
 ├── app/
-│   └── src/main/
-│       ├── java/com/twitterdownloader/app/
-│       │   ├── MainActivity.kt              # 主界面逻辑
-│       │   └── ClipboardMonitorService.kt   # 后台监控服务
-│       └── res/
-│           ├── layout/
-│           │   └── activity_main.xml        # 界面布局
-│           ├── values/
-│           │   ├── strings.xml              # 字符串资源
-│           │   └── colors.xml               # 颜色定义
-│           └── drawable/                    # 图标资源
+│   └── src/
+│       ├── main/
+│       │   ├── java/com/twitterdownloader/app/
+│       │   │   ├── App.kt                     # Application 与 AppContainer
+│       │   │   ├── DownloadManager.kt         # 下载管线（队列/并发/重试）
+│       │   │   ├── MainViewModel.kt           # UI 状态
+│       │   │   ├── MainActivity.kt            # 主界面逻辑
+│       │   │   ├── ClipboardMonitorService.kt # 后台监控服务
+│       │   │   ├── DownloadTask.kt            # 任务模型
+│       │   │   ├── FailedTaskStore.kt         # 失败任务落盘
+│       │   │   ├── network/VideoInfoParser.kt # 多 API 解析
+│       │   │   └── storage/                   # 存储接口与 MediaStore 实现
+│       │   └── res/
+│       │       ├── layout/
+│       │       │   └── activity_main.xml        # 界面布局
+│       │       ├── values/
+│       │       │   ├── strings.xml              # 字符串资源
+│       │       │   └── colors.xml               # 颜色定义
+│       │       └── drawable/                    # 图标资源
+│       └── test/
+│           └── java/com/twitterdownloader/app/
+│               ├── DownloadManagerTest.kt
+│               └── network/VideoInfoParserTest.kt
 ├── build.gradle.kts                         # 项目构建配置
 ├── settings.gradle.kts                      # Gradle 设置
 └── gradle.properties                        # Gradle 属性
@@ -111,10 +123,10 @@ TwitterVideoDownloader/
 ## 工作原理
 
 1. **后台服务** - 使用 Foreground Service 在后台持续运行，绑定通知确保不被系统杀死
-2. **链接检测** - 服务中每秒钟检查一次剪贴板，使用正则表达式匹配 twitter.com/x.com URL
+2. **链接检测** - 前台使用系统剪贴板监听器，后台使用前台服务 + 剪贴板监听器（Android 10+ 对后台剪贴板访问有限制）
 3. **视频解析** - 通过第三方 API (vxtwitter/twitsor) 获取视频直链
-4. **文件下载** - 使用 HttpURLConnection 流式下载，支持断点续传和进度显示
-5. **存储管理** - 下载到应用私有目录，无需 Storage 权限（Android 10+）
+4. **文件下载** - 使用 HttpURLConnection 流式下载，带内容类型校验与 HTML 嗅探，避免错误页落盘
+5. **存储管理** - Android 10+ 通过 MediaStore 保存到公共 Downloads，无需存储权限；Android 8/9 使用传统公共目录
 
 ## 注意事项
 
