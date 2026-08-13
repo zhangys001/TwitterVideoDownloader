@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 只放行解析/下载涉及的域名；其余默认禁止明文。 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">vxtwitter.com</domain>
+        <domain includeSubdomains="true">twitsor.com</domain>
+        <domain includeSubdomains="true">twitter.com</domain>
+        <domain includeSubdomains="true">x.com</domain>
+        <domain includeSubdomains="true">twimg.com</domain>
+    </domain-config>
+</network-security-config>
