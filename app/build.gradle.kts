@@ -18,6 +18,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            // 本地测试：用 debug 密钥签名 release，使 APK 可直接安装。
+            // 若要上架应用商店，请改为使用自建 keystore 的 signingConfig。
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
