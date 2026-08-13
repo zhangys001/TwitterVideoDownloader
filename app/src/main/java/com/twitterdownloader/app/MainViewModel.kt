@@ -40,6 +40,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var lastActiveTaskId: String? = null
     private var lastThumbnailTaskId: String? = null
+    private var lastClipboardText: String? = null
 
     init {
         viewModelScope.launch {
@@ -55,6 +56,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onClipboardText(text: String) {
+        if (text == lastClipboardText) return
+        lastClipboardText = text
         manager.submit(text)
     }
 
