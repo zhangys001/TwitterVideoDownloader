@@ -9,18 +9,17 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
 class ClipboardMonitorService : Service() {
 
     private lateinit var clipboardManager: ClipboardManager
-    private var lastClipboardContent: String? = null
-    private val handler = Handler(Looper.getMainLooper())
-    private var clipboardRunnable: Runnable? = null
+    private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+
+    private val downloadManager: DownloadManager
+        get() = (applicationContext as App).container.downloadManager
 
     private val channelId = "clipboard_monitor_channel"
     private val notificationId = 1001
@@ -39,8 +38,9 @@ class ClipboardMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startMonitoring()
             ACTION_STOP -> stopMonitoring()
+            // null：系统因 START_STICKY 在进程被杀后重启服务，按启动处理（startMonitoring 幂等）
+            else -> startMonitoring()
         }
         return START_STICKY
     }
@@ -49,67 +49,55 @@ class ClipboardMonitorService : Service() {
 
     private fun startMonitoring() {
         startForeground(notificationId, createNotification())
-        startClipboardCheck()
+        attachClipboardListener()
         Log.d(TAG, "Clipboard monitoring started")
     }
 
     private fun stopMonitoring() {
-        stopClipboardCheck()
+        detachClipboardListener()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         Log.d(TAG, "Clipboard monitoring stopped")
     }
 
-    private fun startClipboardCheck() {
-        clipboardRunnable = object : Runnable {
-            override fun run() {
-                checkClipboard()
-                handler.postDelayed(this, 1000)
-            }
+    private fun attachClipboardListener() {
+        if (clipboardListener != null) return
+        clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
+            onClipboardChanged()
         }
-        handler.post(clipboardRunnable!!)
+        clipboardManager.addPrimaryClipChangedListener(clipboardListener!!)
     }
 
-    private fun stopClipboardCheck() {
-        clipboardRunnable?.let {
-            handler.removeCallbacks(it)
-        }
-        clipboardRunnable = null
+    private fun detachClipboardListener() {
+        clipboardListener?.let { clipboardManager.removePrimaryClipChangedListener(it) }
+        clipboardListener = null
     }
 
-    private fun checkClipboard() {
+    private fun onClipboardChanged() {
         try {
-            val clipData = clipboardManager.primaryClip
-            if (clipData != null && clipData.itemCount > 0) {
-                val text = clipData.getItemAt(0).text?.toString()
-                if (text != null && text != lastClipboardContent) {
-                    lastClipboardContent = text
-
-                    val matcher = twitterPattern.matcher(text)
-                    if (matcher.find()) {
-                        val twitterUrl = matcher.group()
-                        Log.d(TAG, "Found Twitter URL: $twitterUrl")
-                        notifyMainActivity(twitterUrl)
-                    }
-                }
-            }
+            val text = clipboardManager.primaryClip?.getItemAt(0)?.text?.toString()
+            if (text.isNullOrEmpty()) return
+            Log.d(TAG, "Clipboard changed (${text.length} chars)")
+            // 先提交到共享 manager，保证后台也能下载（即使 Activity 无法被拉起也不丢链接）
+            val added = downloadManager.submit(text)
+            // 有新任务时再拉起界面让用户看到进度（尽力而为）
+            if (added) notifyMainActivity()
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking clipboard: ${e.message}")
+            Log.e(TAG, "Error handling clipboard: ${e.message}")
         }
     }
 
-    private fun notifyMainActivity(url: String) {
+    private fun notifyMainActivity() {
         val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
             action = MainActivity.ACTION_NEW_TWITTER_URL
-            putExtra(MainActivity.EXTRA_TWITTER_URL, url)
         }
         startActivity(intent)
     }
-
-    private val twitterPattern = java.util.regex.Pattern.compile(
-        "(https?://(mobile\\.)?twitter\\.com/\\w+/status/\\d+|https?://(mobile\\.)?x\\.com/\\w+/status/\\d+)"
-    )
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -121,9 +109,7 @@ class ClipboardMonitorService : Service() {
                 description = "用于后台监控剪贴板中的推特链接"
                 setShowBadge(false)
             }
-
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 
@@ -134,7 +120,6 @@ class ClipboardMonitorService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         val stopIntent = Intent(this, ClipboardMonitorService::class.java).apply {
             action = ACTION_STOP
         }
@@ -144,7 +129,6 @@ class ClipboardMonitorService : Service() {
             stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Twitter Video Downloader")
             .setContentText("正在监控剪贴板中的链接...")
@@ -158,7 +142,7 @@ class ClipboardMonitorService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopClipboardCheck()
+        detachClipboardListener()
         Log.d(TAG, "Service destroyed")
     }
 }
